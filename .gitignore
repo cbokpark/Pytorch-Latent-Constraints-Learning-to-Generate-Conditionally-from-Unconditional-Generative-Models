@@ -45,7 +45,7 @@ nosetests.xml
 coverage.xml
 *.cover
 .hypothesis/
-
+testing.py
 # Translations
 *.mo
 *.pot
