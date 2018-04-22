@@ -37,7 +37,13 @@ class Mnist_VAE(nn.Module):
 		return nn.Sequential(*decoder_layerList)
 		
 	def reparameterize(self,mu,sig_var):
-		raise NotImplementedError 
+		## need to understand
+        if self.training:
+            std = sig_var.exp_()
+            eps = Variable(std.data.new(std.size()).normal_())
+            return eps.mul(std).add_(mu)
+        else:
+            return mu
 	
 	def forward(self,x):
 		encoder_out = self.encoder(x)
