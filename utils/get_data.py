@@ -9,7 +9,7 @@ import random
 import torchvision.utils as utils 
 from torch.utils import data
 import torchvision.datasets as vision_dsets
-import torchvision.transforms as tv_transforms
+import torchvision.transforms as T
 
 
 from tqdm import tqdm 
@@ -34,7 +34,7 @@ def celebA_data_preprocess(root ='/hdd1/cheonbok_experiment/celevA/data/CelebA_n
 
 def MNIST_DATA(root='/hdd1/cheonbok_experiment/data/MNIST',train =True,transforms=None ,download =True,batch_size = 32,num_worker = 1):
 	if transforms is None:
-		transforms = tv_transforms.ToTensor()
+		transforms = T.ToTensor()
 	print ("[+] Get the MNIST DATA")
 	mnist_train = vision_dsets.MNIST(root = root, 
 									train = True, 
@@ -42,7 +42,7 @@ def MNIST_DATA(root='/hdd1/cheonbok_experiment/data/MNIST',train =True,transform
 									download = True)
 	mnist_test = vision_dsets.MNIST(root = root,
 									train = False, 
-									transform = tv_transforms.ToTensor(),
+									transform = T.ToTensor(),
 									download = True)
 	trainDataLoader = data.DataLoader(dataset = mnist_train,
 									batch_size = batch_size,
@@ -104,7 +104,7 @@ class CelebA(data.Dataset):
 			else:
 				self.train_dataset.append([filename, label])
 
-		print('Finished preprocessing the CelebA dataset...')
+		print('[+]Finished preprocessing the CelebA dataset...')
 
 	def __getitem__(self, index):
 		"""Return one image and its corresponding attribute label."""
@@ -139,4 +139,24 @@ def get_loader(image_dir, attr_path, selected_attrs, crop_size=178, image_size=1
 								  batch_size=batch_size,
 								  shuffle=(mode=='train'),
 								  num_workers=num_workers)
-	return data_loader
+	return data_loader,dataset
+
+def Celeba_DATA(celeba_img_dir ,attr_path,image_size=128,celeba_crop_size=178,selected_attrs=None,batch_size = 32,num_worker = 1):
+	
+
+
+	if selected_attrs is None:
+		selected_attrs = ['5_o_Clock_Shadow','Arched_Eyebrows','Attractive','Bags_Under_Eyes', 'Bangs', 
+						'Big_Lips','Big_Nose', 'Black_Hair', 'Blond_Hair', 'Blurry', 'Brown_Hair', 'Bushy_Eyebrows', 'Chubby',
+						 'Double_Chin', 'Eyeglasses', 'Goatee', 'Gray_Hair', 'Heavy_Makeup', 'High_Cheekbones', 'Male',
+						'Mouth_Slightly_Open', 'Mustache', 'Narrow_Eyes', 'No_Beard', 'Oval_Face', 'Pale_Skin', 'Pointy_Nose',
+						'Receding_Hairline', 'Rosy_Cheeks', 'Sideburns', 'Smiling', 'Straight_Hair', 'Wavy_Hair',
+						'Wearing_Earrings', 'Wearing_Hat', 'Wearing_Lipstick', 'Wearing_Necklace', 'Wearing_Necktie', 'Young']
+	trainDataLoader,trainData = get_loader(celeba_img_dir,attr_path,selected_attrs,
+								celeba_crop_size,image_size,batch_size,
+								'CelebA','train',num_worker)
+	testDataLoader,testData = get_loader(celeba_img_dir,attr_path,selected_attrs,
+								celeba_crop_size,image_size,batch_size,
+								'CelebA','test',num_worker)
+
+	return trainData,testData,trainDataLoader,testDataLoader
