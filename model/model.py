@@ -10,7 +10,7 @@ class Actor(nn.Module):
 		layer_list = []
 		for i in range(layer_num):
 			if i == 0:
-				layer_list.append(Linear(d_z,d_model))
+				layer_list.append(Linear(d_z+d_model,d_model))
 			else:
 				layer_list.append(Linear(d_model,d_model))
 			layer_list.append(nn.ReLU)
@@ -19,9 +19,9 @@ class Actor(nn.Module):
 		self.fw_layer = nn.Sequential(*layer_list)
 		self.gate = nn.Sigmoid()
 		self.condition_layer = Linear(num_label,d_model)
-	def forward(self,x,label= None):
-		if label is not None:
-			x = x + self.condition_layer(x)
+	def forward(self,x,label):
+		
+		x = torch.cat((x,self.condition_layer(x)),dim = -1)
 		out = self.fw_layer(x)
 		input_gate , dz = out.chunk(2,dim = -1)
 		gate_value = self.gate(input_gate)
@@ -35,16 +35,16 @@ class Critic(nn.Module):
 		layer_list = []
 		for i in range(layer_num):
 			if i == 0:
-				layer_list.append(Linear(d_z,d_model))
+				layer_list.append(Linear(d_z + d_model,d_model))
 			else:
 				layer_list.append(Linear(d_model,d_model))
 			layer_list.append(nn.ReLU)
 		layer_list.append(Linear(d_model,1))
 		self.fw_layer = nn.Sequential(*layer_list)
 		self.condition_layer = Linear(num_label,d_model)
-	def forward(self, x, label = None):
-		if label is not None:
-			x = x + self.condition_layer(x)
+	def forward(self, x, label):
+		
+		x = torch.cat((x,self.condition_layer(x)),dim = -1)
 		out = self.fw_layer(x)
 		return F.sigmoid(out)
 
