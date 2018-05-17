@@ -5,7 +5,7 @@ from .sub_layer import Linear,View
 import pdb
 
 class Celeba_VAE(nn.Module):
-	def __init__(self,input_dim=28,d_model=400,layer_num=3):
+	def __init__(self,input_size=128,d_model=1024,layer_num=3):
 		super(Mnist_VAE,self).__init__()
 		self.d_model = d_model
 		self.layer_num = layer_num
