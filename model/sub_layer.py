@@ -9,5 +9,14 @@ class Linear(nn.Module):
 	def forward(self,x):
 		out = self.linear(x)
 		return self.batch_norm(out)
-
+class View(nn.Module):
+    def __init__(self,shape = None):
+        super(View,self).__init__()
+        self.shape = shape
+    def forward(self,x):
+        if self.shape is None:
+        	return x.view(x.size(0),-1)
+        else: 
+       
+        	return x.view(x.size(0),*self.shape)
 	

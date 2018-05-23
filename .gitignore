@@ -2,6 +2,11 @@
 __pycache__/
 *.py[cod]
 *$py.class
+#
+results/
+data/
+runs/
+save_model/
 
 # C extensions
 *.so

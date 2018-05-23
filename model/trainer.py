@@ -3,9 +3,12 @@ import torch
 import pdb
 from torchvision.utils import save_image
 import torch.optim as optim
+import numpy as np
+from tensorboardX import SummaryWriter 
+
 class Trainer:
 	# need to modify to inheritance version 
-	def __init__(self,model,trainDataLoader,loss,epoch,metrics=None,resume=None,config=None,validDataLoader = None,device = 1, testDataLoader = None,train_logger =None,optimizer_type='Adam',lr=1e-3):
+	def __init__(self,model,trainDataLoader,loss,epoch,data = 'celeba' ,metrics=None,resume=None,config=None,validDataLoader = None,device = 0, testDataLoader = None,train_logger =None,optimizer_type='Adam',lr=1e-3):
 		#super(Trainer,self).__init__(model,loss,metrics,resume,config,train_logger)
 		self.model = model
 		self.trainDataLoader = trainDataLoader
@@ -15,15 +18,17 @@ class Trainer:
 		self.test = True if self.testDataLoader is not None else False
 		self.device = device
 		self.model.to(self.device)
+		self.d_model = self.model.d_model
 		self.train_loss = 0
 
+		self.tensorboad_writer = SummaryWriter()
 		self.epoch = epoch
 		self.loss = loss
 		self.start_epoch = 1
 		self.with_cuda = torch.cuda.is_available()
 		self.save_freq = 500
 		self.total_iteration = 0 
-		self.optimizer = getattr(optim, optimizer_type)(model.parameters(),lr=lr)
+		self.optimizer = getattr(optim, optimizer_type)(self.model.parameters(),lr=lr)
 		self.valid_term = 10 
 	def train(self):
 		for epoch in range(self.start_epoch,self.epoch+1):
@@ -31,6 +36,10 @@ class Trainer:
 			self.get_sample(epoch)
 			if epoch%self.valid_term == 0:
 				self._test(epoch)
+				self.save_model(epoch)
+		print ("[+] Finished Training Model")
+		
+		
 	def _train_epoch(self,epoch):
 
 		self.model.train()
@@ -43,6 +52,10 @@ class Trainer:
 			loss.backward()
 			self.optimizer.step()
 			train_loss += loss.item()
+			if batch_idx == 1:
+				save_image(recon_batch.cpu(),'results/sample_train_' + str(epoch) +'.png')
+				save_image(data.cpu(),'results/grtruth_train_' + str(epoch) +'.png')
+		self._summary_wrtie(train_loss,epoch)
 		print ("[+] Epoch:[{}/{}] train average loss :{}".format(epoch,self.epoch,train_loss))
 			# print interval state 
 						
@@ -53,16 +66,39 @@ class Trainer:
 			for i, (data,lebels) in enumerate(self.testDataLoader):
 				data = data.cuda()
 				recon_batch,z,mu,log_sigma = self.model(data)
+				
 				loss = self.loss(recon_batch,data,mu,log_sigma)
 				test_loss += loss.item()
+				if i == 1:
+					save_image(recon_batch.cpu(),'results/sample_valid_' + str(epoch) +'.png')
+					save_image(data.cpu(),'results/grtruth_valid_' + str(epoch) +'.png')
+				
 		print ("[+] Validation result {}".format(test_loss))
 	def get_sample(self,epoch):
+		self.model.eval()
 		with torch.no_grad():
 
-			sample = torch.randn(64,400).to(self.device)
+			sample = torch.randn(64,self.d_model).to(self.device)
 			sample = self.model.decoder(sample).cpu()
-			save_image(sample.view(64,1,28,28),'results/sample_' + str(epoch) +'.png')
+			if self.data == 'mnist':
+				save_image(sample.view(64,1,28,28),'results/sample_' + str(epoch) +'.png')
+			else:	
+				save_image(sample,'results/sample_' + str(epoch) +'.png')
+	def save_model(self,epoch):
 
+		torch.save(self.model.state_dict(), './save_model/vae_model'+str(epoch))
+	def _summary_wrtie(self,loss,epoch):
+		self.tensorboad_writer.add_scalar('data/loss',loss,poch)
+		for name,param in self.model.named_parameters():
+			self.tensorboad_writer.add_histogram(name, param.clone().cpu().data.numpy(), epoch)
+			self.tensorboad_writer.add_histogram(name+'/grad', param.grad.clone().cpu().data.numpy(), epoch)
 	def _eval_metric(self,output,target):
 		raise NotImplementedError 
 
+class AC_Trainer:
+	def __init__(self,vae_model,actor,critic,loss,epoch,metrics=None,resume=None,config=None,validDataLoader = None,device = 0, testDataLoader = None,train_logger =None,optimizer_type='Adam',lr=1e-3):
+		raise NotImplementedError
+	def train(self):
+		raise NotImplementedError
+	def _train_epoch(self,epoch):
+		raise NotImplementedError
