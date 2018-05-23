@@ -88,7 +88,7 @@ class Trainer:
 
 		torch.save(self.model.state_dict(), './save_model/vae_model'+str(epoch))
 	def _summary_wrtie(self,loss,epoch):
-		self.tensorboad_writer.add_scalar('data/loss',loss,poch)
+		self.tensorboad_writer.add_scalar('data/loss',loss,epoch)
 		for name,param in self.model.named_parameters():
 			self.tensorboad_writer.add_histogram(name, param.clone().cpu().data.numpy(), epoch)
 			self.tensorboad_writer.add_histogram(name+'/grad', param.grad.clone().cpu().data.numpy(), epoch)
