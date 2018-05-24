@@ -58,7 +58,7 @@ class Celeba_VAE(nn.Module):
 		## need to understand
 		if self.training:
 			std = sig_var.mul(0.5).exp_() # need to check sig_var is log (sigma^2)
-			eps = std.data.new(std.size()).normal_(std=0.01)
+			eps = std.data.new(std.size()).normal_(std=1)
 			return eps.mul(std).add_(mu)
 		else:
 			return mu

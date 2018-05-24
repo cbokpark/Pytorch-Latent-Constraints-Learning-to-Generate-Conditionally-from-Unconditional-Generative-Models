@@ -21,6 +21,7 @@ class Trainer:
 		self.d_model = self.model.d_model
 		self.train_loss = 0
 
+		self.data = data
 		self.tensorboad_writer = SummaryWriter()
 		self.epoch = epoch
 		self.loss = loss
@@ -79,11 +80,11 @@ class Trainer:
 		with torch.no_grad():
 
 			sample = torch.randn(64,self.d_model).to(self.device)
-			sample = self.model.decoder(sample).cpu()
+			out = self.model.decoder(sample)
 			if self.data == 'mnist':
 				save_image(sample.view(64,1,28,28),'results/sample_' + str(epoch) +'.png')
 			else:	
-				save_image(sample,'results/sample_' + str(epoch) +'.png')
+				save_image(out.cpu(),'results/sample_' + str(epoch) +'.png')
 	def save_model(self,epoch):
 
 		torch.save(self.model.state_dict(), './save_model/vae_model'+str(epoch))
