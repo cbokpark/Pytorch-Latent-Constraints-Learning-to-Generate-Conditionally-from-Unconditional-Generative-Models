@@ -32,6 +32,7 @@ class Celeba_VAE(nn.Module):
 		encoder_layerList.append(nn.ReLU())
 		encoder_layerList.append(nn.Conv2d(in_channels = 1024,out_channels = 2048,kernel_size = 3,stride =2,padding=1))		
 		#encoder_layerList.append(nn.BatchNorm2d(1024*2))
+		encoder_layerList.append(nn.ReLU())
 		encoder_layerList.append(View())
 		encoder_layerList.append(nn.Linear(4*4*2048,2048))
 		return nn.Sequential(*encoder_layerList)
@@ -57,7 +58,7 @@ class Celeba_VAE(nn.Module):
 	def reparameterize(self,mu,sig_var):
 		## need to understand
 		if self.training:
-			std = sig_var.mul(0.5).exp_() # need to check sig_var is log (sigma^2)
+			std = sig_var # need to check sig_var is log (sigma^2)
 			eps = std.data.new(std.size()).normal_(std=1)
 			return eps.mul(std).add_(mu)
 		else:
