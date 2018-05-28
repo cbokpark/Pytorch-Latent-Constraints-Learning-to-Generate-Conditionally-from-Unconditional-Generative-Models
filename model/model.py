@@ -1,7 +1,8 @@
 import torch
-from torch.autograd import Variable 
-from .sublayer import Linear
+import torch.nn as nn
+from .sub_layer import Linear
 import torch.nn.functional as F
+
 class Actor(nn.Module):
 	def __init__(self,d_z,d_model=2048,layer_num=4,num_label = 10,condition_mode = True):
 		self.d_z = d_z
@@ -24,11 +25,12 @@ class Actor(nn.Module):
 		self.fw_layer = nn.Sequential(*layer_list)
 		self.gate = nn.Sigmoid()
 		if condition_mode:
+			self.num_label = num_label
 			self.condition_layer = Linear(num_label,d_model)
 
 	def forward(self,x,label =None):
 		
-		if self.condition_mode:
+		if self.condition_mode&label:
 			x = torch.cat((x,self.condition_layer(x)),dim = -1)
 		out = self.fw_layer(x)
 		input_gate , dz = out.chunk(2,dim = -1)
@@ -36,10 +38,9 @@ class Actor(nn.Module):
 		return gate_value*dz
 
 class Critic(nn.Module):
-	def __init__(self,d_z,d_model,layer_num=4,num_label = 10,codintion_mode = True):
+	def __init__(self,d_z,d_model,layer_num=4,num_label = None,codintion_mode = True):
 		self.d_z = d_z
 		self.d_model = d_model
-		self.num_label = num_label
 		self.condition_mode = codintion_mode
 		layer_list = []
 		for i in range(layer_num):
@@ -56,6 +57,7 @@ class Critic(nn.Module):
 		self.fw_layer = nn.Sequential(*layer_list)
 
 		if condition_mode:
+			self.num_label = num_label
 			self.condition_layer = Linear(num_label,d_model)
 	def forward(self, x, label = None):
 		

@@ -63,7 +63,18 @@ class Celeba_VAE(nn.Module):
 			return eps.mul(std).add_(mu)
 		else:
 			return mu
-	
+	def encode(self,x):
+		encoder_out = self.encoder(x)
+		sig_var , mu_var = encoder_out.chunk(2,dim=-1)
+
+		sig_var = self.sig_layer(sig_var)
+		return sig_var,mu_var
+
+	def decode(self,z):
+		output = self.decoder(z)
+		output = self.sigmoid(output)
+		return output
+
 	def forward(self,x):
 		encoder_out = self.encoder(x)
 		sig_var , mu_var = encoder_out.chunk(2,dim=-1)
@@ -89,7 +100,7 @@ class Mnist_VAE(nn.Module):
 		
 		self.decoder = self.build_decoder(self.input_dim,self.d_model,self.layer_num)
 
-
+		self.sigmoid = nn.Sigmoid()
 	def build_encoder(self,input_dim,d_model,layer_num):
 		encoder_layerList = []
 		for i in range(layer_num):
@@ -114,12 +125,24 @@ class Mnist_VAE(nn.Module):
 	def reparameterize(self,mu,sig_var):
 		## need to understand
 		if self.training:
-			std = sig_var.mul(0.5).exp_() # need to check sig_var is log (sigma^2)
-			eps = std.data.new(std.size()).normal_(std=0.1)
+			std = sig_var # need to check sig_var is log (sigma^2)
+			eps = std.data.new(std.size()).normal_(std=1)
 			return eps.mul(std).add_(mu)
 		else:
 			return mu
-	
+	def encode(self,x):
+		encoder_out = self.encoder(x)
+		sig_var , mu_var = encoder_out.chunk(2,dim=-1)
+
+		sig_var = self.sig_layer(sig_var)
+		self.reparameterize(mu_var,sig_var)
+		return sig_var,mu_var,z 
+
+	def decode(self,z):
+		output = self.decoder(z)
+		output = self.sigmoid(output)
+		return output
+		
 	def forward(self,x):
 		x = x.view(-1,28*28)
 		encoder_out = self.encoder(x)
@@ -128,6 +151,7 @@ class Mnist_VAE(nn.Module):
 		sig_var = self.sig_layer(sig_var)
 		z = self.reparameterize(mu_var,sig_var)
 		output = self.decoder(z)
+		output = self.sigmoid(output)
 
 		return output,z,mu_var,sig_var
 

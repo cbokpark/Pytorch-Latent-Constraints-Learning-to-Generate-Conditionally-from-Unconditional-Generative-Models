@@ -8,6 +8,8 @@ results/
 data/
 runs/
 save_model/
+MNIST_results/
+celeba_results/
 
 # C extensions
 *.so

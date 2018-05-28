@@ -32,7 +32,7 @@ def celebA_data_preprocess(root ='/hdd1/cheonbok_experiment/celevA/data/CelebA_n
 		plt.imsave(fname = save_root + 'celebA/'+img_list[i],arr=img)
 	print ("[+] Finished the CelebA Data set Preprocessing")
 
-def MNIST_DATA(root='/hdd1/cheonbok_experiment/data/MNIST',train =True,transforms=None ,download =True,batch_size = 32,num_worker = 1):
+def MNIST_DATA(root='./data',train =True,transforms=None ,download =True,batch_size = 32,num_worker = 1):
 	if transforms is None:
 		transforms = T.ToTensor()
 	print ("[+] Get the MNIST DATA")
