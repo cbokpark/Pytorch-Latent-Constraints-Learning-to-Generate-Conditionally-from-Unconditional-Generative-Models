@@ -103,12 +103,12 @@ class Trainer:
 		raise NotImplementedError 
 
 class AC_Trainer:
-	def __init__(self,vae_model,actor,real_critic,attr_critic,epoch,metrics=None,resume=None,config=None,validDataLoader = None,device = 0, testDataLoader = None,train_logger =None,optimizer_type='Adam',lr=1e-3):
-		self.vae_model = vae_model
+	def __init__(self,vae_model,actor,real_critic,attr_critic,epoch,trainDataLoader,data,metrics=None,resume=None,config=None,validDataLoader = None,device = 0, testDataLoader = None,train_logger =None,optimizer_type='Adam',lr=1e-3):
+		self.model = vae_model
 		self.actor = actor
 		self.real_critic = real_critic
 		self.attr_critic = attr_critic
-		self.loss = loss # lossfunction class 
+		#self.loss = loss # lossfunction class 
 		self.epoch = epoch 
 
 		self.trainDataLoader = trainDataLoader
@@ -117,8 +117,12 @@ class AC_Trainer:
 		self.valid = True if self.validDataLoader is not None else False
 		self.test = True if self.testDataLoader is not None else False
 		self.device = device
-		self.vae_model.to(self.device)
-		self.vae_model.eval()
+		
+		self.model.to(self.device)
+		self.model.eval()
+		self.actor.to(self.device)
+		self.real_critic.to(self.device)
+		self.attr_critic.to(self.device)
 
 		self.d_model = self.model.d_model
 		self.train_loss = 0
@@ -135,8 +139,8 @@ class AC_Trainer:
 		self.total_iteration = 0 
 		#self.gen_optimizer = getattr(optim, optimizer_type)(list(self.actor.parameters()) + list(self.critic.parameters()),lr=lr)
 		self.actor_optim = getattr(optim, optimizer_type)(self.actor.parameters(),lr=lr)
-		self.real_optim = getattr(optim, optimizer_type)(self.real_critic.parameters(),lr=lr)
-		self.attr_optim = getattr(optim, optimizer_type)(self.attr_critic.parameters(),lr=lr)
+		self.real_optim = getattr(optim, optimizer_type)(self.real_critic.parameters(),lr=lr*4)
+		self.attr_optim = getattr(optim, optimizer_type)(self.attr_critic.parameters(),lr=lr*4)
 		self.valid_term = 10 
 
 	def train(self):
@@ -160,11 +164,18 @@ class AC_Trainer:
 		self.real_critic.train()
 		self.attr_critic.train()
 		train_loss = 0
+		iteration = 0
+		total_actor_loss = 0
+		total_real_loss = 0
+		total_attr_loss = 0
 		for batch_idx,(data,labels) in enumerate(self.trainDataLoader):
+			iteration +=1
+			m_batchsize = data.size(0)
+			if self.data == 'MNIST':
+				labels = self.fake_attr_generate(m_batchsize,labels)
 			
-			m_batchsize = batch_idx.size(0)
-			real_data = torch.one(m_batchsize,1)
-			fake_data = torch.zero(m_batchsize,1)
+			real_data = torch.ones(m_batchsize,1)
+			fake_data = torch.zeros(m_batchsize,1)
 			fake_z = torch.randn(m_batchsize,self.d_model)
 			fake_attr = self.fake_attr_generate(m_batchsize)
 
@@ -174,14 +185,17 @@ class AC_Trainer:
 			fake_attr = fake_attr.to(self.device)
 			data = data.to(self.device)
 
-
-			mu,sig_var,z = self.model.encode(data)
+			sig_var,mu,z = self.model.encode(data)
 			z_g = self.actor(fake_z,labels)
+			
 			self.real_critic.zero_grad()
-			fake_cri_actor = self.actor(fake_z)
+			z = self.re_allocate(z)
+			fake_z = self.re_allocate(fake_z)
+			z_g = self.re_allocate(z_g)
+			
 			real_cri_out = self.real_critic(z,labels)
-			fake_out = self.real_critic(fake_z,fake_attr) 
-			zg_critic_out = self.real_critic(z_g,labels)
+			fake_out = self.real_critic(z,fake_attr) 
+			
 
 			#if np.random.rand(1) < percentage_prior_fake:
 			"""
@@ -196,66 +210,80 @@ class AC_Trainer:
 			      all_z = np.vstack([real_z, fake_z_gen, real_z])
 			    all_attr = np.vstack([real_attr, real_attr, fake_attr]) 
 			"""
-			critic_loss = F.binary_cross_entropy(real_cri_out,real_data) + F.binary_cross_entropy(fake_out,fake_data) +\
-						 + F.binary_cross_entropy(zg_critic_out,fake_data) 
+			if  np.random.rand(1) < 0.1:
+				prior_critic_out = self.real_critic(fake_z,labels)
+				critic_loss = F.binary_cross_entropy(real_cri_out,real_data) + F.binary_cross_entropy(fake_out,fake_data) +\
+							F.binary_cross_entropy(prior_critic_out,fake_data)
+			else:
+				real_cri_out = self.real_critic(z,labels)
+				fake_out = self.real_critic(fake_z,labels) 
+				zg_critic_out = self.real_critic(z_g,labels)
+				critic_loss = F.binary_cross_entropy(real_cri_out,real_data) + F.binary_cross_entropy(fake_out,fake_data)+\
+							 F.binary_cross_entropy(zg_critic_out,fake_data) 
 			
 			critic_loss.backward()
-			self.real_optim.step()
-			
-			self.attr_critic.zero_grad()
 
-			real_output = self.attr_critic(z,labels)
-			feke_ouput = self.attr_critic(z_g,labels) # prior 는 안써도 되는가? 애매하군. 
-			d_attr_loss = F.binary_cross_entropy(real_output,real_data) + F.binary_cross_entropy(fake_output,fake_data) # z_g 가 0 z가 1임을 알아야함. prior 는 사용하는가? ??
+			#self.real_optim.step()
+			#total_real_loss += critic_loss.item()
+			#self.attr_critic.zero_grad()
 
-			d_attr_loss.backward()
 
-			self.attr_optim.step()
+			#real_output = self.attr_critic(z)
+			#fake_output = self.attr_critic(z_g) # prior 는 안써도 되는가? 애매하군. 
+			#d_attr_loss = F.binary_cross_entropy(real_output,labels) + F.binary_cross_entropy(fake_output,labels) # z_g 가 0 z가 1임을 알아야함. prior 는 사용하는가? ??
 
+			#d_attr_loss.backward()
+
+			#self.attr_optim.step()
+			#total_attr_loss += d_attr_loss.item()
 			# geneartor section : critic network z_g to 1/ z to 0/ prior? | d_attr network z_g to real attr , z to fake attr x  / prior ?
 
 			self.actor.zero_grad()
 
-			real_cri_out = self.real_critic(z,labels)
-			zg_critic_out = self.real_critic(z_g,labels)
+			if batch_idx%9 ==0:
+				zg_critic_out = self.real_critic(z_g,labels)
 
-			real_output = self.attr_critic(z,labels)
-			feke_ouput = self.attr_critic(z_g,labels) # prior 는 안써도 되는가? 애매하군. 
-			
-			weight_var = torch.mean(sig_var,0,True)
-			distnace_penalty = (1 + (z_g-z).pow(2)).log()*1/weight_var.pow(2)
-			actor_loss = F.binary_cross_entropy(real_cri_out,fake_data) + F.binary_cross_entropy(zg_critic_out,real_data)+\
-						F.binary_cross_entropy(real_output,fake_data) + F.binary_cross_entropy(fake_output,real_data) +\
-						+0.01*distnace_penalty
+				fake_output = self.attr_critic(z_g) # prior 는 안써도 되는가? 애매하군. 
+				weight_var = torch.mean(sig_var,0,True)
 
-			actor_loss.backward()
-			self.actor_optim.step()
+				distnace_penalty = 0.01*torch.sum(torch.mean((1 + (z_g-z).pow(2)).log()*weight_var.pow(-2),0))
+				#distnace_penalty = 0
+				actor_loss = F.binary_cross_entropy(zg_critic_out,real_data,size_average=False)+ distnace_penalty
+				print ("distance penalty : {} , {}".format(distnace_penalty,actor_loss))
+				#actor_loss = actor_loss + distnace_penalty
+				actor_loss.backward()
+				total_actor_loss += actor_loss.item()
+				self.actor_optim.step()
 			
 			if batch_idx == 1:
-				z_g_recon = self.decode(z_g)
-				prior_recon = self.decode(fake_z)
-				data_recon = self.decode(z)
-				if self.data = 'MNIS':
+				z_g_recon = self.model.decode(z_g)
+				prior_recon = self.model.decode(fake_z)
+				data_recon = self.model.decode(z)
+				if self.data == 'MNIST':
 					data = data.view(-1,1,28,28)
-					z_g_recon = data.view(-1,1,28,28)
+					z_g_recon = z_g_recon.view(-1,1,28,28)
 					data_recon = data_recon.view(-1,1,28,28)
 					prior_recon = prior_recon.view(-1,1,28,28)
-				save_image(z_g_batch.cpu(),self.data+'_results/sample_z_g_train_' + str(epoch) +'.png')
-				save_image(prior_recon.cpu(),self.data+'_results/sample_prior_train_' + str(epoch) +'.png')	
-				save_image(data_recon.cpu(),self.data+'_results/sample_recon_train_' + str(epoch) +'.png')
-				save_image(data.cpu(),self.data+'_results/grtruth_train_' + str(epoch) +'.png')
-				
-		self._summary_wrtie(actor_loss,d_attr_loss,critic_loss,epoch)
-		print ("[+] Epoch:[{}/{}] train average loss :{}".format(epoch,self.epoch,train_loss)) 
-	
+				save_image(z_g_recon.cpu(),self.data+'_results_ac/sample_z_g_train_' + str(epoch) +'.png')
+				save_image(prior_recon.cpu(),self.data+'_results_ac/sample_prior_train_' + str(epoch) +'.png')	
+				save_image(data_recon.cpu(),self.data+'_results_ac/sample_recon_train_' + str(epoch) +'.png')
+				save_image(data.cpu(),self.data+'_results_ac/grtruth_train_' + str(epoch) +'.png')
+			
+
+		self._summary_wrtie(total_actor_loss/iteration,total_attr_loss/iteration,total_real_loss/iteration,epoch)
+		print ("[+] Epoch:[{}/{}] train actor average loss :{}".format(epoch,self.epoch,train_loss)) 
+	def re_allocate(self,data):
+		new_data = data.detach()
+		new_data.requiers_grad = True
+		return new_data
 	def get_sample(self,epoch,data =None,labels =None):
 		self.model.eval()
 		self.actor.eval()
 		self.real_critic.eval()
 		self.attr_critic.eval()
 		with torch.no_grad():
-			for i in self.num_labels:
-				test_labels = self.num_labels[i]
+			for i in range(self.num_labels):
+				test_labels = self.labels[i]
 				test_labels = test_labels.expand(64,-1)
 
 				sample = torch.randn(64,self.d_model).to(self.device)
@@ -264,7 +292,7 @@ class AC_Trainer:
 				out = self.model.decoder(sample)
 				out = self.model.sigmoid(out) #?? Amiguity Labels input? 
 				if self.data == 'MNIST':
-					save_image(out.view(-1,1,28,28),'results/sample_i' + str(epoch) +'.png')
+					save_image(out.view(-1,1,28,28),self.data+'_results_ac/sample_' + str(epoch)+'_class:'+str(i) +'.png')
 				else:	
 					save_image(out.cpu(),'results/sample_' + str(epoch) +'.png') 
 	def _test(self,epoch):
@@ -292,14 +320,16 @@ class AC_Trainer:
 			self.labels = self.labels.to(self.device)
 			self.num_labels = self.labels.size(0) 
 	
-	def fake_attr_generate(self,batch_size):
-		
-		m = batch_size
-		selection = np.random.randint(self.num_labels,size=m)
-		selection = torch.from_numpy(selection).to(self.device)
-		fake_attr = torch.index_select(self.labels,0,selection)
+	def fake_attr_generate(self,batch_size,selection_index = None ):
+		if selection_index is None:
+			m = batch_size
+			selection = np.random.randint(self.num_labels,size=m)
+			selection = torch.from_numpy(selection).to(self.device)
+			fake_attr = torch.index_select(self.labels,0,selection)
+		else:
+			selection_index = selection_index.cuda()
+			fake_attr = torch.index_select(self.labels,0,selection_index)
 		return fake_attr
-
 
 
 
@@ -307,16 +337,16 @@ class AC_Trainer:
 		self.tensorboad_writer.add_scalar('data/loss',loss,epoch) # need to modify . We use four loss value . 
 		self.tensorboad_writer.add_scalar('data/attr_loss',d_attr_loss,epoch) # need to modify . We use four loss value . 
 		self.tensorboad_writer.add_scalar('data/real_loss',real_loss,epoch)
-		for name,param in self.actor.named_parameters(): #actor
-			self.tensorboad_writer.add_histogram('actor/'+name, param.clone().cpu().data.numpy(), epoch,bins='sturges')
-			self.tensorboad_writer.add_histogram('actor/'+name+'/grad', param.grad.clone().cpu().data.numpy(), epoch,bins='sturges')
-		for name,param in self.real_critic.named_parameters(): #actor
-			self.tensorboad_writer.add_histogram('real_critic/'+name, param.clone().cpu().data.numpy(), epoch,bins='sturges')
-			self.tensorboad_writer.add_histogram('real_critic/'+name+'/grad', param.grad.clone().cpu().data.numpy(), epoch,bins='sturges')
+		#for name,param in self.actor.named_parameters(): #actor
+		#	self.tensorboad_writer.add_histogram('actor/'+name, param.clone().cpu().data.numpy(), epoch,bins='sturges')
+		#	self.tensorboad_writer.add_histogram('actor/'+name+'/grad', param.grad.clone().cpu().data.numpy(), epoch,bins='sturges')
+		#for name,param in self.real_critic.named_parameters(): #actor
+		#	self.tensorboad_writer.add_histogram('real_critic/'+name, param.clone().cpu().data.numpy(), epoch,bins='sturges')
+		#	self.tensorboad_writer.add_histogram('real_critic/'+name+'/grad', param.grad.clone().cpu().data.numpy(), epoch,bins='sturges')
 		for name,param in self.attr_critic.named_parameters(): #actor
 			self.tensorboad_writer.add_histogram('attr_critic/'+name, param.clone().cpu().data.numpy(), epoch,bins='sturges')
 			self.tensorboad_writer.add_histogram('attr_critic/'+name+'/grad', param.grad.clone().cpu().data.numpy(), epoch,bins='sturges')
-	def _save_model(self,epoch):
+	def save_model(self,epoch):
 		torch.save(self.actor.state_dict(), './save_model/actor_model'+str(epoch)+'_'+self.data+'.path.tar')
 		torch.save(self.real_critic.state_dict(), './save_model/real_d_model'+str(epoch)+'_'+self.data+'.path.tar')
 		torch.save(self.attr_critic.state_dict(), './save_model/attr_d_model'+str(epoch)+'_'+self.data+'.path.tar')
@@ -324,4 +354,4 @@ class AC_Trainer:
 		
 		print ("[+] Load pre-trained VAE model")
 		checkpoint = torch.load(path)
-		self.vae_model.load_state_dict(checkpoint)
+		self.model.load_state_dict(checkpoint)
