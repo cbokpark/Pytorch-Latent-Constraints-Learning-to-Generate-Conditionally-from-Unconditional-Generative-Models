@@ -139,8 +139,8 @@ class AC_Trainer:
 		self.total_iteration = 0 
 		#self.gen_optimizer = getattr(optim, optimizer_type)(list(self.actor.parameters()) + list(self.critic.parameters()),lr=lr)
 		self.actor_optim = getattr(optim, optimizer_type)(self.actor.parameters(),lr=lr)
-		self.real_optim = getattr(optim, optimizer_type)(self.real_critic.parameters(),lr=lr*4)
-		self.attr_optim = getattr(optim, optimizer_type)(self.attr_critic.parameters(),lr=lr*4)
+		self.real_optim = getattr(optim, optimizer_type)(self.real_critic.parameters(),lr=lr*3)
+		self.attr_optim = getattr(optim, optimizer_type)(self.attr_critic.parameters(),lr=lr*3)
 		self.valid_term = 10 
 
 	def train(self):
@@ -184,18 +184,19 @@ class AC_Trainer:
 			fake_z = fake_z.to(self.device)
 			fake_attr = fake_attr.to(self.device)
 			data = data.to(self.device)
-
-			sig_var,mu,z = self.model.encode(data)
+			with torch.no_grad():
+				sig_var,mu,z = self.model.encode(data)
 			z_g = self.actor(fake_z,labels)
 			
 			self.real_critic.zero_grad()
-			z = self.re_allocate(z)
-			fake_z = self.re_allocate(fake_z)
-			z_g = self.re_allocate(z_g)
+			#z = self.re_allocate(z)
+			#fake_z = self.re_allocate(fake_z)
+			#z_g = self.re_allocate(z_g)
 			
 			real_cri_out = self.real_critic(z,labels)
 			fake_out = self.real_critic(z,fake_attr) 
 			
+
 
 			#if np.random.rand(1) < percentage_prior_fake:
 			"""
@@ -210,18 +211,48 @@ class AC_Trainer:
 			      all_z = np.vstack([real_z, fake_z_gen, real_z])
 			    all_attr = np.vstack([real_attr, real_attr, fake_attr]) 
 			"""
-			if  np.random.rand(1) < 0.1:
-				prior_critic_out = self.real_critic(fake_z,labels)
-				critic_loss = F.binary_cross_entropy(real_cri_out,real_data) + F.binary_cross_entropy(fake_out,fake_data) +\
-							F.binary_cross_entropy(prior_critic_out,fake_data)
-			else:
-				real_cri_out = self.real_critic(z,labels)
-				fake_out = self.real_critic(fake_z,labels) 
-				zg_critic_out = self.real_critic(z_g,labels)
-				critic_loss = F.binary_cross_entropy(real_cri_out,real_data) + F.binary_cross_entropy(fake_out,fake_data)+\
-							 F.binary_cross_entropy(zg_critic_out,fake_data) 
-			
-			critic_loss.backward()
+
+			if batch_idx%9 ==0:
+				
+				actor_labels = self.re_allocate(labels)
+				actor_z = self.re_allocate(z)
+				actor_truth = self.re_allocate(real_data)
+
+				actor_labels.requiers_grad =True
+				z.requires_grad = True
+				actor_g = self.actor(actor_z,actor_labels) 
+				zg_critic_out = self.real_critic(actor_g,actor_labels)
+				#fake_output = self.attr_critic(z_g) # prior 는 안써도 되는가? 애매하군. 
+				weight_var = torch.mean(sig_var,0,True)
+
+				distnace_penalty = 0.01*torch.sum(torch.mean((1 + (z_g-z).pow(2)).log()*weight_var.pow(-2),0))
+				#distnace_penalty = 0
+				actor_loss = F.binary_cross_entropy(zg_critic_out,actor_truth,size_average=False)+ distnace_penalty
+				print ("distance penalty : {} , {}".format(distnace_penalty,actor_loss))
+				#actor_loss = actor_loss + distnace_penalty
+				actor_loss.backward()
+				total_actor_loss += actor_loss.item()
+				self.actor_optim.step()
+			else:	
+				if  np.random.rand(1) < 0.1:
+					
+					input_data = torch.cat([z,fake_z,fake_z],dim=0) 
+					input_attr = torch.cat([labels,labels,fake_attr],dim=0)
+					real_labels = torch.cat([real_data,fake_data,fake_data])
+
+					logit_out = self.real_critic(input_data,input_attr)
+					critic_loss = F.binary_cross_entropy(logit_out,real_labels) 
+				else:
+					input_data = torch.cat([z,z_g,fake_z],dim=0) 
+					input_attr = torch.cat([labels,labels,fake_attr],dim=0)
+					input_attr.requiers_grad = True
+					real_labels = torch.cat([real_data,fake_data,fake_data])
+					real_labels.requiers_grad = True
+					logit_out = self.real_critic(input_data,input_attr)
+
+					critic_loss = F.binary_cross_entropy(logit_out,real_labels) 
+				
+				critic_loss.backward()
 
 			#self.real_optim.step()
 			#total_real_loss += critic_loss.item()
@@ -240,20 +271,6 @@ class AC_Trainer:
 
 			self.actor.zero_grad()
 
-			if batch_idx%9 ==0:
-				zg_critic_out = self.real_critic(z_g,labels)
-
-				fake_output = self.attr_critic(z_g) # prior 는 안써도 되는가? 애매하군. 
-				weight_var = torch.mean(sig_var,0,True)
-
-				distnace_penalty = 0.01*torch.sum(torch.mean((1 + (z_g-z).pow(2)).log()*weight_var.pow(-2),0))
-				#distnace_penalty = 0
-				actor_loss = F.binary_cross_entropy(zg_critic_out,real_data,size_average=False)+ distnace_penalty
-				print ("distance penalty : {} , {}".format(distnace_penalty,actor_loss))
-				#actor_loss = actor_loss + distnace_penalty
-				actor_loss.backward()
-				total_actor_loss += actor_loss.item()
-				self.actor_optim.step()
 			
 			if batch_idx == 1:
 				z_g_recon = self.model.decode(z_g)
@@ -343,9 +360,9 @@ class AC_Trainer:
 		#for name,param in self.real_critic.named_parameters(): #actor
 		#	self.tensorboad_writer.add_histogram('real_critic/'+name, param.clone().cpu().data.numpy(), epoch,bins='sturges')
 		#	self.tensorboad_writer.add_histogram('real_critic/'+name+'/grad', param.grad.clone().cpu().data.numpy(), epoch,bins='sturges')
-		for name,param in self.attr_critic.named_parameters(): #actor
-			self.tensorboad_writer.add_histogram('attr_critic/'+name, param.clone().cpu().data.numpy(), epoch,bins='sturges')
-			self.tensorboad_writer.add_histogram('attr_critic/'+name+'/grad', param.grad.clone().cpu().data.numpy(), epoch,bins='sturges')
+		#for name,param in self.attr_critic.named_parameters(): #actor
+		#	self.tensorboad_writer.add_histogram('attr_critic/'+name, param.clone().cpu().data.numpy(), epoch,bins='sturges')
+		#	self.tensorboad_writer.add_histogram('attr_critic/'+name+'/grad', param.grad.clone().cpu().data.numpy(), epoch,bins='sturges')
 	def save_model(self,epoch):
 		torch.save(self.actor.state_dict(), './save_model/actor_model'+str(epoch)+'_'+self.data+'.path.tar')
 		torch.save(self.real_critic.state_dict(), './save_model/real_d_model'+str(epoch)+'_'+self.data+'.path.tar')
