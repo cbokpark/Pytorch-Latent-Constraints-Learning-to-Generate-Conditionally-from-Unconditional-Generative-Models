@@ -330,7 +330,7 @@ class AC_Trainer:
 				if self.data == 'MNIST':
 					save_image(out.view(-1,1,28,28),self.data+'_results_ac/sample_' + str(epoch)+'_class:'+str(i) +'.png')
 				else:	
-					save_image(out.cpu(),'results/sample_' + str(epoch) +'.png') 
+					save_image(out.cpu(),self.data+'_results_ac/sample_' + str(epoch)+'_class:'+str(i) +'.png') 
 	def _test(self,epoch):
 		self.model.eval()
 		self.actor.eval()
