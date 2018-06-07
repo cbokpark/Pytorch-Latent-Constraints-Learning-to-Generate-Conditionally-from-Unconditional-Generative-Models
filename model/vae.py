@@ -65,11 +65,12 @@ class Celeba_VAE(nn.Module):
 			return mu
 	def encode(self,x):
 		encoder_out = self.encoder(x)
+
 		sig_var , mu_var = encoder_out.chunk(2,dim=-1)
 
 		sig_var = self.sig_layer(sig_var)
-		return sig_var,mu_var
-
+		z = self.reparameterize(mu_var,sig_var)
+		return sig_var,mu_var,z 
 	def decode(self,z):
 		output = self.decoder(z)
 		output = self.sigmoid(output)
@@ -131,11 +132,12 @@ class Mnist_VAE(nn.Module):
 		else:
 			return mu
 	def encode(self,x):
+		x = x.view(-1,28*28)
 		encoder_out = self.encoder(x)
 		sig_var , mu_var = encoder_out.chunk(2,dim=-1)
 
 		sig_var = self.sig_layer(sig_var)
-		self.reparameterize(mu_var,sig_var)
+		z = self.reparameterize(mu_var,sig_var)
 		return sig_var,mu_var,z 
 
 	def decode(self,z):
