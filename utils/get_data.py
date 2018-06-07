@@ -13,6 +13,7 @@ import torchvision.transforms as T
 
 
 from tqdm import tqdm 
+import pdb
 def celebA_data_preprocess(root ='/hdd1/cheonbok_experiment/celevA/data/CelebA_nocrop/images/' ,save_root='/hdd1/cheonbok_experiment/celevA/data/CelebA_resize/',resize=64):
 	"""
 		Preprocessing the celevA data set (resizing)
@@ -32,7 +33,7 @@ def celebA_data_preprocess(root ='/hdd1/cheonbok_experiment/celevA/data/CelebA_n
 		plt.imsave(fname = save_root + 'celebA/'+img_list[i],arr=img)
 	print ("[+] Finished the CelebA Data set Preprocessing")
 
-def MNIST_DATA(root='./data',train =True,transforms=None ,download =True,batch_size = 32,num_worker = 1):
+def MNIST_DATA(root='./data',train =True,transforms=None ,download =True,batch_size = 32,num_worker = 2):
 	if transforms is None:
 		transforms = T.ToTensor()
 	print ("[+] Get the MNIST DATA")
@@ -47,12 +48,12 @@ def MNIST_DATA(root='./data',train =True,transforms=None ,download =True,batch_s
 	trainDataLoader = data.DataLoader(dataset = mnist_train,
 									batch_size = batch_size,
 									shuffle =True,
-									num_workers = 1)
+									num_workers = 2)
 
 	testDataLoader = data.DataLoader(dataset = mnist_test,
 									batch_size = batch_size,
 									shuffle = False,
-									num_workers = 1)
+									num_workers = 2)
 	print ("[+] Finished loading data & Preprocessing")
 	return mnist_train,mnist_test,trainDataLoader,testDataLoader
 
@@ -60,7 +61,7 @@ def MNIST_DATA(root='./data',train =True,transforms=None ,download =True,batch_s
 class CelebA(data.Dataset):
 	"""Dataset class for the CelebA dataset."""
 
-	def __init__(self, image_dir, attr_path, selected_attrs, transform, mode):
+	def __init__(self, image_dir, attr_path, selected_attrs, transform, mode,un_condition_mode=True):
 		"""Initialize and preprocess the CelebA dataset."""
 		self.image_dir = image_dir
 		self.attr_path = attr_path
@@ -71,6 +72,7 @@ class CelebA(data.Dataset):
 		self.test_dataset = []
 		self.attr2idx = {}
 		self.idx2attr = {}
+		self.un_condition_mode = un_condition_mode
 		self.preprocess()
 
 		if mode == 'train':
@@ -99,11 +101,11 @@ class CelebA(data.Dataset):
 				idx = self.attr2idx[attr_name]
 				label.append(values[idx] == '1')
 
-			if (i+1) < 2000:
-				self.test_dataset.append([filename, label])
-			else:
-				self.train_dataset.append([filename, label])
-
+			if sum(label)>=1 or self.un_condition_mode:
+				if (i+1) < 2000:
+					self.test_dataset.append([filename, label])
+				else:
+					self.train_dataset.append([filename, label])
 		print('[+]Finished preprocessing the CelebA dataset...')
 
 	def __getitem__(self, index):
@@ -111,15 +113,19 @@ class CelebA(data.Dataset):
 		dataset = self.train_dataset if self.mode == 'train' else self.test_dataset
 		filename, label = dataset[index]
 		image = Image.open(os.path.join(self.image_dir, filename))
+
 		return self.transform(image), torch.FloatTensor(label)
 
 	def __len__(self):
 		"""Return the number of images."""
 		return self.num_images
+	#def __figure_label(self,label):
+	#	figure_label = {0:[2,]}
+
 
 
 def get_loader(image_dir, attr_path, selected_attrs, crop_size=178, image_size=128, 
-			   batch_size=16, dataset='CelebA', mode='train', num_workers=1):
+			   batch_size=16, dataset='CelebA', mode='train', num_workers=1,un_condition_mode = True):
 	"""Build and return a data loader."""
 	transform = []
 	if mode == 'train':
@@ -131,9 +137,9 @@ def get_loader(image_dir, attr_path, selected_attrs, crop_size=178, image_size=1
 	transform = T.Compose(transform)
 
 	if dataset == 'CelebA':
-		dataset = CelebA(image_dir, attr_path, selected_attrs, transform, mode)
+		dataset = CelebA(image_dir, attr_path, selected_attrs, transform, mode,un_condition_mode)
 	elif dataset == 'RaFD':
-		dataset = ImageFolder(image_dir, transform)
+		dataset = ImageFolder(image_dir, transform,un_condition_mode)
 
 	data_loader = data.DataLoader(dataset=dataset,
 								  batch_size=batch_size,
@@ -141,7 +147,7 @@ def get_loader(image_dir, attr_path, selected_attrs, crop_size=178, image_size=1
 								  num_workers=num_workers)
 	return data_loader,dataset
 
-def Celeba_DATA(celeba_img_dir ,attr_path,image_size=128,celeba_crop_size=178,selected_attrs=None,batch_size = 32,num_worker = 1):
+def Celeba_DATA(celeba_img_dir ,attr_path,image_size=128,celeba_crop_size=178,selected_attrs=None,batch_size = 32,num_worker = 1,un_condition_mode =True):
 	
 
 
@@ -154,9 +160,9 @@ def Celeba_DATA(celeba_img_dir ,attr_path,image_size=128,celeba_crop_size=178,se
 						'Wearing_Earrings', 'Wearing_Hat', 'Wearing_Lipstick', 'Wearing_Necklace', 'Wearing_Necktie', 'Young']
 	trainDataLoader,trainData = get_loader(celeba_img_dir,attr_path,selected_attrs,
 								celeba_crop_size,image_size,batch_size,
-								'CelebA','train',num_worker)
+								'CelebA','train',num_worker,un_condition_mode)
 	testDataLoader,testData = get_loader(celeba_img_dir,attr_path,selected_attrs,
 								celeba_crop_size,image_size,batch_size,
-								'CelebA','test',num_worker)
+								'CelebA','test',num_worker,un_condition_mode)
 
 	return trainData,testData,trainDataLoader,testDataLoader
