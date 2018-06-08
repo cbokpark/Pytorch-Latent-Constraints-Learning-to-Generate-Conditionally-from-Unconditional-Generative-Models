@@ -39,7 +39,7 @@ def main():
 
 		if parser_config.data == 'MNIST':
 			trainDset,testDset,trainDataLoader,testDataLoader= MNIST_DATA(batch_size = parser_config.batch_size )
-			model = Mnist_VAE(input_dim= 28*28 ,layer_num= 4, d_model=400)
+			model = Mnist_VAE(input_dim= 28*28 ,layer_num= 4, d_model=1024)
 			trainer = Trainer(model=model,
 							loss = loss_function,
 							data = parser_config.data,
@@ -60,25 +60,45 @@ def main():
 		else:
 			raise NotImplementedError
 	else:
-
-		if parser_config.data ==  'celeba':
-			trainDset,testDset,trainDataLoader,testDataLoader = Celeba_DATA(celeba_img_dir=parser_config.image_dir ,attr_path=parser_config.attr_path,batch_size = parser_config.batch_size,image_size=64,celeba_crop_size=128)
-			model = Celeba_VAE(128,d_model=1024,layer_num=3)
+		if parser_config.data ==  'MNIST':
+			trainDset,testDset,trainDataLoader,testDataLoader = MNIST_DATA(batch_size = parser_config.batch_size )
+			model = Mnist_VAE(input_dim= 28*28 ,layer_num= 4, d_model=1024)
 			actor = Actor(1024,2048)
 			real_critic = Critic(1024,2048,num_labels=10,condition_mode =True)
-			attr_critic = Critic(1024,2048,output_size=10,condition_mode =False)
+			attr_critic = Critic(1024,2048,num_labels=10,num_output=10,condition_mode =False)
 			actrainer = AC_Trainer(vae_model=model,
 							actor = actor,
 							real_critic = real_critic,
 							attr_critic = attr_critic,
-							loss = celeba_loss,
 							epoch = parser_config.num_epoch,
+							data = parser_config.data,
 							trainDataLoader=trainDataLoader,
 							testDataLoader=testDataLoader)
-			trainer.load_vae('./save_model/vae_mode50')
+			actrainer.load_vae('./save_model/vae_model50_MNIST.path.tar')
+			actrainer._set_label_type()
+		if parser_config.data ==  'celeba':
+			selected_attrs = ['Bald','Black_Hair','Blond_Hair','Brown_Hair','Eyeglasses','Male','No_Beard','Smiling','Wearing_Hat','Young']
+			trainDset,testDset,trainDataLoader,testDataLoader = Celeba_DATA(celeba_img_dir=parser_config.image_dir ,attr_path=parser_config.attr_path,selected_attrs=selected_attrs,batch_size = parser_config.batch_size,image_size=64,celeba_crop_size=128)
+			model = Celeba_VAE(128,d_model=1024,layer_num=3)
+			actor = Actor(1024,2048)
+			real_critic = Critic(1024,2048,num_labels=10,condition_mode =True)
+			attr_critic = Critic(1024,2048,num_labels=10,num_output=10,condition_mode =False)
+			actrainer = AC_Trainer(vae_model=model,
+							actor = actor,
+							real_critic = real_critic,
+							attr_critic = attr_critic,
+							epoch = parser_config.num_epoch,
+							data = parser_config.data,
+							trainDataLoader=trainDataLoader,
+							testDataLoader=testDataLoader)
+			actrainer.load_vae('./save_model/vae_model150_celeba.path.tar')
+
 
 	print ("[+] Train model start")
-	trainer.train()
+	if parser_config.vae_mode:
+		trainer.train()
+	else:
+		actrainer.train()
 
 if __name__ == '__main__':
 	main()
