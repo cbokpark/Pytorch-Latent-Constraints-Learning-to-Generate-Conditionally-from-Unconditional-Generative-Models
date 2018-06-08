@@ -270,6 +270,7 @@ class AC_Trainer:
 				weight_var = torch.mean(sig_var,0,True)
 
 				distnace_penalty = torch.mean(torch.sum((1 + (actor_g-fake_z).pow(2)).log()*weight_var.pow(-2),1),0)
+				distnace_penalty = distnace_penalty + torch.mean(torch.sum((1 + (real_g-z).pow(2)).log()*weight_var.pow(-2),1),0)
 				#distnace_penalty = 0
 
 				actor_loss = F.binary_cross_entropy(zg_critic_out,actor_truth,size_average=False)+ F.binary_cross_entropy(zg_critic_real,actor_truth,size_average=False)+distnace_penalty
